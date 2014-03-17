@@ -19,14 +19,17 @@ package org.apache.maven.plugins.enforcer;
  * under the License.
  */
 
-import static org.mockito.Mockito.*;
-
 import org.apache.maven.enforcer.rule.api.EnforcerRuleException;
 import org.apache.maven.enforcer.rule.api.EnforcerRuleHelper;
 import org.apache.maven.model.Prerequisites;
 import org.apache.maven.project.MavenProject;
+import org.junit.Ignore;
 import org.junit.Test;
 
+import static org.mockito.Mockito.mock;
+import static org.mockito.Mockito.when;
+
+@Ignore
 public class RequirePrerequisiteTest
 {
     @Test( expected = EnforcerRuleException.class )
@@ -42,7 +45,7 @@ public class RequirePrerequisiteTest
 
         rule.execute( helper );
     }
-    
+
     @Test
     public void testNoSpecifiedPrerequisite()
         throws Exception
