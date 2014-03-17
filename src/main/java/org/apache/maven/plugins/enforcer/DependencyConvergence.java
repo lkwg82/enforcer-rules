@@ -19,10 +19,6 @@ package org.apache.maven.plugins.enforcer;
  * under the License.
  */
 
-import java.util.ArrayList;
-import java.util.Collections;
-import java.util.List;
-
 import org.apache.maven.artifact.Artifact;
 import org.apache.maven.artifact.factory.ArtifactFactory;
 import org.apache.maven.artifact.metadata.ArtifactMetadataSource;
@@ -33,7 +29,11 @@ import org.apache.maven.enforcer.rule.api.EnforcerRule;
 import org.apache.maven.enforcer.rule.api.EnforcerRuleException;
 import org.apache.maven.enforcer.rule.api.EnforcerRuleHelper;
 import org.apache.maven.plugin.logging.Log;
+import org.apache.maven.plugins.enforcer.report.Dependency;
+import org.apache.maven.plugins.enforcer.report.DependencyConvergenceReport;
+import org.apache.maven.plugins.enforcer.report.DependencyConvergenceViolation;
 import org.apache.maven.plugins.enforcer.utils.DependencyVersionMap;
+import org.apache.maven.plugins.enforcer.utils.ObjectToXmlWriter;
 import org.apache.maven.project.MavenProject;
 import org.apache.maven.shared.dependency.tree.DependencyNode;
 import org.apache.maven.shared.dependency.tree.DependencyTreeBuilder;
@@ -41,6 +41,11 @@ import org.apache.maven.shared.dependency.tree.DependencyTreeBuilderException;
 import org.codehaus.plexus.component.configurator.expression.ExpressionEvaluationException;
 import org.codehaus.plexus.component.repository.exception.ComponentLookupException;
 import org.codehaus.plexus.i18n.I18N;
+
+import java.io.File;
+import java.util.ArrayList;
+import java.util.Collections;
+import java.util.List;
 
 /**
  * @author <a href="mailto:rex@e-hoffman.org">Rex Hoffman</a>
@@ -52,20 +57,31 @@ public class DependencyConvergence
     private static Log log;
 
     private static I18N i18n;
-    
-    private boolean uniqueVersions; 
+
+    private boolean uniqueVersions;
+
+    /**
+     * file to write xml report to
+     *
+     * @parameter expression="${xmlReport}" defaultValue="null"
+     */
+    private File xmlReport;
+
+    public void setXmlReport(File xmlReport) {
+        this.xmlReport = xmlReport;
+    }
 
     public void setUniqueVersions( boolean uniqueVersions )
     {
         this.uniqueVersions = uniqueVersions;
     }
-    
+
     /**
      * Uses the {@link EnforcerRuleHelper} to populate the values of the
      * {@link DependencyTreeBuilder#buildDependencyTree(MavenProject, ArtifactRepository, ArtifactFactory, ArtifactMetadataSource, ArtifactFilter, ArtifactCollector)}
      * factory method. <br/>
      * This method simply exists to hide all the ugly lookup that the {@link EnforcerRuleHelper} has to do.
-     * 
+     *
      * @param helper
      * @return a Dependency Node which is the root of the project's dependency tree
      * @throws EnforcerRuleException
@@ -121,7 +137,11 @@ public class DependencyConvergence
             visitor.setUniqueVersions( uniqueVersions );
             node.accept( visitor );
             List<CharSequence> errorMsgs = new ArrayList<CharSequence>();
-            errorMsgs.addAll( getConvergenceErrorMsgs( visitor.getConflictedVersionNumbers() ) );
+
+            List<List<DependencyNode>> conflictedVersionNumbers = visitor.getConflictedVersionNumbers();
+            report(conflictedVersionNumbers);
+
+            errorMsgs.addAll( getConvergenceErrorMsgs(conflictedVersionNumbers) );
             for ( CharSequence errorMsg : errorMsgs )
             {
                 log.warn( errorMsg );
@@ -138,6 +158,34 @@ public class DependencyConvergence
         catch ( Exception e )
         {
             throw new EnforcerRuleException( e.getLocalizedMessage(), e );
+        }
+    }
+
+    private void report(List<List<DependencyNode>> conflictedVersionNumbers) {
+        if (null != xmlReport){
+            DependencyConvergenceReport report = new DependencyConvergenceReport();
+
+
+            for(List<DependencyNode> list : conflictedVersionNumbers){
+                final Artifact firstArtifact = list.get(0).getArtifact();
+                Dependency dependency = new Dependency();
+                dependency.setGroupId(firstArtifact.getGroupId());
+                dependency.setArtifactId(firstArtifact.getArtifactId());
+
+                DependencyConvergenceViolation violation = new DependencyConvergenceViolation();
+                violation.setDependency(dependency);
+
+                for(DependencyNode node : list){
+                    violation.getVersions().add(node.getArtifact().getVersion());
+                }
+
+                report.getDependencyConvergencesViolations().add(violation);
+            }
+
+            log.info("writing xml report to " + xmlReport);
+            ObjectToXmlWriter.writeXmlReport(xmlReport,report);
+        }else{
+            log.info("not writing xml report ");
         }
     }
 
@@ -222,7 +270,7 @@ public class DependencyConvergence
      * allow double checking of the results. Most of the time this can be done by generating unique ids, but sometimes
      * the results of objects returned by the helper need to be queried. You may for example, store certain objects in
      * your rule and then query them later.
-     * 
+     *
      * @param rule
      */
     public boolean isResultValid( EnforcerRule rule )
